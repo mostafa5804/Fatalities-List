@@ -3,26 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>سامانه جستجوی پرسنل</title>
+    <title>اسامی کشته شدگان حوادث دی ماه ۱۴۰۴</title>
     
-    <!-- React & ReactDOM -->
+    <!-- React & Tailwind -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Tailwind CSS (برای زیبایی) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- فونت وزیر -->
+    <!-- Persian Font: Vazirmatn -->
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
 
     <style>
-        body { font-family: 'Vazirmatn', sans-serif; background-color: #f8fafc; }
-        .loader {
-            border: 3px solid #f3f3f3; border-radius: 50%; border-top: 3px solid #3498db;
-            width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block;
+        body { 
+            font-family: 'Vazirmatn', sans-serif; 
+            background: #f0f2f5;
+            background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -31,32 +42,38 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
+        // Icons
+        const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>;
+        const FilterIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>;
+        const UserIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>;
+        const IdCardIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0c0 .667.333 1 1 1v1m0-2c0 .667-.333 1-1 1v1" /></svg>;
+        const CopyIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>;
+
         const App = () => {
             const [data, setData] = useState([]);
             const [searchTerm, setSearchTerm] = useState("");
+            const [filterField, setFilterField] = useState("all"); // all, name, family, id
             const [loading, setLoading] = useState(true);
-            const [error, setError] = useState(null);
+            const [currentPage, setCurrentPage] = useState(1);
+            const [itemsPerPage] = useState(10);
             const [uploadMode, setUploadMode] = useState(false);
+            const [toast, setToast] = useState(null);
 
-            // تابع نرمال‌سازی برای جستجوی دقیق (تبدیل ی/ک عربی به فارسی و اعداد)
-            const normalizeText = (text) => {
+            // Normalize Text
+            const normalize = (text) => {
                 if (!text) return "";
                 return text.toString()
                     .replace(/ي/g, "ی").replace(/ك/g, "ک")
-                    .replace(/۰/g, '0').replace(/۱/g, '1').replace(/۲/g, '2').replace(/۳/g, '3').replace(/۴/g, '4')
-                    .replace(/۵/g, '5').replace(/۶/g, '6').replace(/۷/g, '7').replace(/۸/g, '8').replace(/۹/g, '9')
+                    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
                     .trim().toLowerCase();
             };
 
-            // تابع پردازش متن CSV به آرایه
             const parseCSV = (csvText) => {
                 const rows = csvText.split('\n');
                 const parsedData = [];
-                // شروع از ردیف 1 (چون ردیف 0 هدر است)
                 for (let i = 1; i < rows.length; i++) {
                     const row = rows[i].trim();
                     if (row) {
-                        // مدیریت کاما در CSV
                         const cols = row.split(',');
                         if (cols.length >= 4) {
                             parsedData.push({
@@ -71,152 +88,258 @@
                 return parsedData;
             };
 
-            // تلاش برای دانلود فایل list.csv از سرور (GitHub Pages)
             useEffect(() => {
                 fetch('list.csv')
-                    .then(response => {
-                        if (!response.ok) throw new Error("فایل دیتابیس (list.csv) پیدا نشد.");
-                        return response.text();
+                    .then(res => {
+                        if (!res.ok) throw new Error();
+                        return res.text();
                     })
                     .then(text => {
-                        const parsed = parseCSV(text);
-                        setData(parsed);
+                        setData(parseCSV(text));
                         setLoading(false);
                     })
-                    .catch(err => {
-                        console.log("Auto-load failed, switching to manual upload mode.");
-                        setError("فایل دیتابیس خودکار بارگذاری نشد. لطفاً فایل را دستی انتخاب کنید.");
-                        setUploadMode(true); // فعال کردن حالت آپلود دستی اگر فایل پیدا نشد
+                    .catch(() => {
+                        setUploadMode(true);
                         setLoading(false);
                     });
             }, []);
 
-            // هندل کردن آپلود دستی (برای تست لوکال)
             const handleFileUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
                 setLoading(true);
                 const reader = new FileReader();
                 reader.onload = (event) => {
-                    const parsed = parseCSV(event.target.result);
-                    setData(parsed);
+                    setData(parseCSV(event.target.result));
                     setLoading(false);
                     setUploadMode(false);
-                    setError(null);
                 };
                 reader.readAsText(file);
             };
 
-            // منطق فیلتر کردن
+            const copyToClipboard = (text) => {
+                navigator.clipboard.writeText(text);
+                setToast("کد ملی کپی شد!");
+                setTimeout(() => setToast(null), 2000);
+            };
+
+            // Filter Logic
             const filteredData = useMemo(() => {
-                if (!searchTerm) return []; // اگر چیزی تایپ نشده، لیست خالی نشان بده (برای سرعت)
-                // اگر می‌خواهید همه را نشان دهد، خط بالا را پاک کنید و بنویسید return data;
+                if (!searchTerm) return data;
+                const normSearch = normalize(searchTerm);
                 
-                const normalizedSearch = normalizeText(searchTerm);
-                // محدود کردن نتایج به ۵۰ مورد برای سرعت بالا
-                let results = [];
-                for (let item of data) {
-                    if (results.length >= 50) break;
-                    if (
-                        normalizeText(item.name).includes(normalizedSearch) ||
-                        normalizeText(item.family).includes(normalizedSearch) ||
-                        normalizeText(item.id).includes(normalizedSearch)
-                    ) {
-                        results.push(item);
-                    }
-                }
-                return results;
-            }, [data, searchTerm]);
+                return data.filter(item => {
+                    const nName = normalize(item.name);
+                    const nFamily = normalize(item.family);
+                    const nId = normalize(item.id);
+                    
+                    if (filterField === "all") {
+                        return nName.includes(normSearch) || nFamily.includes(normSearch) || nId.includes(normSearch);
+                    } else if (filterField === "name") return nName.includes(normSearch);
+                    else if (filterField === "family") return nFamily.includes(normSearch);
+                    else if (filterField === "id") return nId.includes(normSearch);
+                });
+            }, [data, searchTerm, filterField]);
+
+            // Pagination Logic
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            const currentData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+            const handlePageChange = (newPage) => {
+                if (newPage > 0 && newPage <= totalPages) setCurrentPage(newPage);
+            };
+
+            // Reset page on search
+            useEffect(() => setCurrentPage(1), [searchTerm, filterField]);
 
             return (
-                <div className="min-h-screen bg-gray-50 flex flex-col items-center py-10 px-4">
+                <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
                     
-                    <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl overflow-hidden">
-                        {/* هدر */}
-                        <div className="bg-gradient-to-r from-blue-700 to-blue-500 p-8 text-center text-white">
-                            <h1 className="text-3xl font-bold mb-2">سامانه جستجوی پرسنل</h1>
-                            <p className="opacity-90">جستجو بر اساس نام، نام خانوادگی و کد ملی</p>
+                    {/* Toast Notification */}
+                    {toast && (
+                        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-full shadow-lg text-sm z-50 animate-fade-in">
+                            {toast}
                         </div>
+                    )}
 
-                        {/* بخش جستجو و وضعیت */}
-                        <div className="p-6">
-                            {loading ? (
-                                <div className="text-center py-10 text-blue-600">
-                                    <span className="loader ml-2"></span> در حال بارگذاری دیتابیس...
+                    <div className="w-full max-w-5xl">
+                        
+                        {/* Header Section */}
+                        <div className="glass-panel bg-white rounded-3xl shadow-xl overflow-hidden mb-6">
+                            <div className="bg-gradient-to-l from-indigo-600 to-blue-600 p-8 sm:p-10 text-white relative overflow-hidden">
+                                <div className="relative z-10">
+                                    <h1 className="text-3xl sm:text-4xl font-extrabold mb-2 tracking-tight">سامانه هوشمند پرسنل</h1>
+                                    <p className="text-blue-100 font-light text-lg">جستجوی سریع و پیشرفته در پایگاه داده</p>
                                 </div>
-                            ) : uploadMode ? (
-                                <div className="text-center py-10 border-2 border-dashed border-gray-300 rounded-lg">
-                                    <p className="text-gray-600 mb-4">فایل list.csv یافت نشد (یا در حال تست لوکال هستید).</p>
-                                    <input 
-                                        type="file" 
-                                        accept=".csv"
-                                        onChange={handleFileUpload}
-                                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                                    />
-                                </div>
-                            ) : (
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        className="w-full p-4 pr-12 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
-                                        placeholder="جستجو کنید..."
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        autoFocus
-                                    />
-                                    <div className="absolute top-0 right-0 p-4 text-gray-400">
-                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                                    </div>
-                                    <div className="mt-2 text-sm text-gray-500 flex justify-between">
-                                        <span>تعداد کل رکوردها: {data.length.toLocaleString('fa-IR')}</span>
-                                        {searchTerm && <span>نتایج یافت شده: {filteredData.length.toLocaleString('fa-IR')}</span>}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                                {/* Abstract Shapes */}
+                                <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-white opacity-10 blur-3xl"></div>
+                                <div className="absolute bottom-0 left-0 -ml-10 -mb-10 w-40 h-40 rounded-full bg-blue-400 opacity-20 blur-2xl"></div>
+                            </div>
 
-                        {/* جدول نتایج */}
-                        {!loading && !uploadMode && (
-                            <div className="border-t border-gray-100">
-                                {searchTerm === "" ? (
-                                    <div className="text-center py-12 text-gray-400">
-                                        <p>برای مشاهده نتایج جستجو کنید</p>
+                            {/* Search & Controls */}
+                            <div className="p-6 sm:p-8 bg-white">
+                                {loading ? (
+                                    <div className="space-y-4 animate-pulse">
+                                        <div className="h-12 bg-gray-200 rounded-xl w-full"></div>
+                                        <div className="h-8 bg-gray-200 rounded-lg w-1/3"></div>
                                     </div>
-                                ) : filteredData.length > 0 ? (
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-right">
-                                            <thead className="bg-gray-50 text-gray-600 font-medium border-b">
-                                                <tr>
-                                                    <th className="p-4">نام</th>
-                                                    <th className="p-4">نام خانوادگی</th>
-                                                    <th className="p-4">نام پدر</th>
-                                                    <th className="p-4 text-left">کد ملی</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {filteredData.map((item, idx) => (
-                                                    <tr key={idx} className="hover:bg-blue-50 transition-colors">
-                                                        <td className="p-4 font-bold text-gray-800">{item.name}</td>
-                                                        <td className="p-4 text-gray-700">{item.family}</td>
-                                                        <td className="p-4 text-gray-500 text-sm">{item.father}</td>
-                                                        <td className="p-4 text-left font-mono text-blue-600">{item.id}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                ) : uploadMode ? (
+                                    <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-2xl hover:border-blue-400 transition-colors bg-gray-50">
+                                        <div className="mx-auto h-12 w-12 text-gray-400 mb-4"><IdCardIcon /></div>
+                                        <h3 className="text-lg font-medium text-gray-900">فایل دیتابیس یافت نشد</h3>
+                                        <p className="mt-1 text-sm text-gray-500 mb-6">لطفا فایل list.csv را انتخاب کنید</p>
+                                        <input type="file" accept=".csv" onChange={handleFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 max-w-xs mx-auto" />
                                     </div>
                                 ) : (
-                                    <div className="text-center py-8 text-red-500">
-                                        نتیجه‌ای یافت نشد.
+                                    <div className="flex flex-col md:flex-row gap-4">
+                                        <div className="relative flex-grow">
+                                            <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-gray-400">
+                                                <SearchIcon />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                className="block w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-sm text-lg"
+                                                placeholder="جستجو کنید..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="md:w-1/4 relative">
+                                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-500">
+                                                <FilterIcon />
+                                            </div>
+                                            <select
+                                                value={filterField}
+                                                onChange={(e) => setFilterField(e.target.value)}
+                                                className="block w-full pr-10 pl-3 py-4 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer font-medium"
+                                            >
+                                                <option value="all">همه فیلدها</option>
+                                                <option value="name">فقط نام</option>
+                                                <option value="family">فقط نام خانوادگی</option>
+                                                <option value="id">فقط کد ملی</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 )}
+                                
+                                <div className="mt-4 flex justify-between items-center text-sm text-gray-500 font-medium px-1">
+                                    <span>تعداد کل: <span className="text-gray-900">{data.length.toLocaleString('fa-IR')}</span></span>
+                                    <span>نتایج: <span className="text-blue-600">{filteredData.length.toLocaleString('fa-IR')}</span></span>
+                                </div>
                             </div>
+                        </div>
+
+                        {/* Results Section */}
+                        {!loading && !uploadMode && (
+                            <>
+                                {filteredData.length === 0 ? (
+                                    <div className="text-center py-20 bg-white rounded-3xl shadow-sm">
+                                        <div className="mx-auto h-16 w-16 text-gray-300 mb-4"><SearchIcon /></div>
+                                        <p className="text-gray-500 text-lg">نتیجه‌ای یافت نشد.</p>
+                                    </div>
+                                ) : (
+                                    <div className="bg-white rounded-3xl shadow-xl overflow-hidden glass-panel border-0">
+                                        {/* Desktop Table */}
+                                        <div className="hidden md:block overflow-x-auto">
+                                            <table className="w-full text-right">
+                                                <thead className="bg-gray-50 border-b border-gray-200">
+                                                    <tr>
+                                                        <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">ردیف</th>
+                                                        <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">نام و نام خانوادگی</th>
+                                                        <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">نام پدر</th>
+                                                        <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-left">کد ملی</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {currentData.map((item, idx) => (
+                                                        <tr key={idx} className="hover:bg-blue-50 transition-colors group">
+                                                            <td className="px-6 py-4 text-gray-400 text-sm">
+                                                                {((currentPage - 1) * itemsPerPage + idx + 1).toLocaleString('fa-IR')}
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex items-center">
+                                                                    <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold ml-4">
+                                                                        {item.family[0]}
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="text-sm font-bold text-gray-900">{item.family}</div>
+                                                                        <div className="text-sm text-gray-500">{item.name}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-sm text-gray-600">{item.father}</td>
+                                                            <td className="px-6 py-4 text-left">
+                                                                <button 
+                                                                    onClick={() => copyToClipboard(item.id)}
+                                                                    className="inline-flex items-center px-3 py-1 rounded-full text-sm font-mono bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 transition-colors group-hover:shadow-sm"
+                                                                    title="کپی کردن"
+                                                                >
+                                                                    {item.id}
+                                                                    <span className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity"><CopyIcon /></span>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {/* Mobile Cards */}
+                                        <div className="md:hidden divide-y divide-gray-100">
+                                            {currentData.map((item, idx) => (
+                                                <div key={idx} className="p-5 hover:bg-gray-50 transition-colors">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div className="flex items-center">
+                                                            <div className="h-10 w-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold ml-3 text-sm">
+                                                                {item.family[0]}
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="text-gray-900 font-bold">{item.name} {item.family}</h3>
+                                                                <p className="text-xs text-gray-500">فرزند: {item.father}</p>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-xs text-gray-300 font-mono">#{((currentPage - 1) * itemsPerPage + idx + 1)}</span>
+                                                    </div>
+                                                    <div className="mt-3 flex justify-end">
+                                                        <button 
+                                                            onClick={() => copyToClipboard(item.id)}
+                                                            className="flex items-center space-x-2 space-x-reverse text-sm font-mono bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg active:bg-blue-200"
+                                                        >
+                                                            <span>{item.id}</span>
+                                                            <CopyIcon />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Pagination Controls */}
+                                        {totalPages > 1 && (
+                                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                                                <button
+                                                    onClick={() => handlePageChange(currentPage - 1)}
+                                                    disabled={currentPage === 1}
+                                                    className={`px-4 py-2 rounded-lg text-sm font-medium ${currentPage === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-white hover:shadow-sm bg-transparent border border-transparent hover:border-gray-200'}`}
+                                                >
+                                                    قبلی
+                                                </button>
+                                                <span className="text-sm text-gray-600 dir-ltr font-mono">
+                                                    {currentPage} / {totalPages}
+                                                </span>
+                                                <button
+                                                    onClick={() => handlePageChange(currentPage + 1)}
+                                                    disabled={currentPage === totalPages}
+                                                    className={`px-4 py-2 rounded-lg text-sm font-medium ${currentPage === totalPages ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-white hover:shadow-sm bg-transparent border border-transparent hover:border-gray-200'}`}
+                                                >
+                                                    بعدی
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
-                    
-                    <footer className="mt-8 text-gray-400 text-sm">
-                        قدرت گرفته از GitHub Pages | دیتابیس CSV
-                    </footer>
                 </div>
             );
         };
@@ -226,4 +349,3 @@
     </script>
 </body>
 </html>
-
