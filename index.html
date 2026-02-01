@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سامانه جستجوی پرسنل</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS (برای زیبایی) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- فونت وزیر -->
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+
+    <style>
+        body { font-family: 'Vazirmatn', sans-serif; background-color: #f8fafc; }
+        .loader {
+            border: 3px solid #f3f3f3; border-radius: 50%; border-top: 3px solid #3498db;
+            width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const App = () => {
+            const [data, setData] = useState([]);
+            const [searchTerm, setSearchTerm] = useState("");
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [uploadMode, setUploadMode] = useState(false);
+
+            // تابع نرمال‌سازی برای جستجوی دقیق (تبدیل ی/ک عربی به فارسی و اعداد)
+            const normalizeText = (text) => {
+                if (!text) return "";
+                return text.toString()
+                    .replace(/ي/g, "ی").replace(/ك/g, "ک")
+                    .replace(/۰/g, '0').replace(/۱/g, '1').replace(/۲/g, '2').replace(/۳/g, '3').replace(/۴/g, '4')
+                    .replace(/۵/g, '5').replace(/۶/g, '6').replace(/۷/g, '7').replace(/۸/g, '8').replace(/۹/g, '9')
+                    .trim().toLowerCase();
+            };
+
+            // تابع پردازش متن CSV به آرایه
+            const parseCSV = (csvText) => {
+                const rows = csvText.split('\n');
+                const parsedData = [];
+                // شروع از ردیف 1 (چون ردیف 0 هدر است)
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i].trim();
+                    if (row) {
+                        // مدیریت کاما در CSV
+                        const cols = row.split(',');
+                        if (cols.length >= 4) {
+                            parsedData.push({
+                                name: cols[0]?.trim() || "",
+                                family: cols[1]?.trim() || "",
+                                father: cols[2]?.trim() || "",
+                                id: cols[3]?.trim() || ""
+                            });
+                        }
+                    }
+                }
+                return parsedData;
+            };
+
+            // تلاش برای دانلود فایل list.csv از سرور (GitHub Pages)
+            useEffect(() => {
+                fetch('list.csv')
+                    .then(response => {
+                        if (!response.ok) throw new Error("فایل دیتابیس (list.csv) پیدا نشد.");
+                        return response.text();
+                    })
+                    .then(text => {
+                        const parsed = parseCSV(text);
+                        setData(parsed);
+                        setLoading(false);
+                    })
+                    .catch(err => {
+                        console.log("Auto-load failed, switching to manual upload mode.");
+                        setError("فایل دیتابیس خودکار بارگذاری نشد. لطفاً فایل را دستی انتخاب کنید.");
+                        setUploadMode(true); // فعال کردن حالت آپلود دستی اگر فایل پیدا نشد
+                        setLoading(false);
+                    });
+            }, []);
+
+            // هندل کردن آپلود دستی (برای تست لوکال)
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setLoading(true);
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const parsed = parseCSV(event.target.result);
+                    setData(parsed);
+                    setLoading(false);
+                    setUploadMode(false);
+                    setError(null);
+                };
+                reader.readAsText(file);
+            };
+
+            // منطق فیلتر کردن
+            const filteredData = useMemo(() => {
+                if (!searchTerm) return []; // اگر چیزی تایپ نشده، لیست خالی نشان بده (برای سرعت)
+                // اگر می‌خواهید همه را نشان دهد، خط بالا را پاک کنید و بنویسید return data;
+                
+                const normalizedSearch = normalizeText(searchTerm);
+                // محدود کردن نتایج به ۵۰ مورد برای سرعت بالا
+                let results = [];
+                for (let item of data) {
+                    if (results.length >= 50) break;
+                    if (
+                        normalizeText(item.name).includes(normalizedSearch) ||
+                        normalizeText(item.family).includes(normalizedSearch) ||
+                        normalizeText(item.id).includes(normalizedSearch)
+                    ) {
+                        results.push(item);
+                    }
+                }
+                return results;
+            }, [data, searchTerm]);
+
+            return (
+                <div className="min-h-screen bg-gray-50 flex flex-col items-center py-10 px-4">
+                    
+                    <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl overflow-hidden">
+                        {/* هدر */}
+                        <div className="bg-gradient-to-r from-blue-700 to-blue-500 p-8 text-center text-white">
+                            <h1 className="text-3xl font-bold mb-2">سامانه جستجوی پرسنل</h1>
+                            <p className="opacity-90">جستجو بر اساس نام، نام خانوادگی و کد ملی</p>
+                        </div>
+
+                        {/* بخش جستجو و وضعیت */}
+                        <div className="p-6">
+                            {loading ? (
+                                <div className="text-center py-10 text-blue-600">
+                                    <span className="loader ml-2"></span> در حال بارگذاری دیتابیس...
+                                </div>
+                            ) : uploadMode ? (
+                                <div className="text-center py-10 border-2 border-dashed border-gray-300 rounded-lg">
+                                    <p className="text-gray-600 mb-4">فایل list.csv یافت نشد (یا در حال تست لوکال هستید).</p>
+                                    <input 
+                                        type="file" 
+                                        accept=".csv"
+                                        onChange={handleFileUpload}
+                                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        className="w-full p-4 pr-12 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
+                                        placeholder="جستجو کنید..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        autoFocus
+                                    />
+                                    <div className="absolute top-0 right-0 p-4 text-gray-400">
+                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                    </div>
+                                    <div className="mt-2 text-sm text-gray-500 flex justify-between">
+                                        <span>تعداد کل رکوردها: {data.length.toLocaleString('fa-IR')}</span>
+                                        {searchTerm && <span>نتایج یافت شده: {filteredData.length.toLocaleString('fa-IR')}</span>}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* جدول نتایج */}
+                        {!loading && !uploadMode && (
+                            <div className="border-t border-gray-100">
+                                {searchTerm === "" ? (
+                                    <div className="text-center py-12 text-gray-400">
+                                        <p>برای مشاهده نتایج جستجو کنید</p>
+                                    </div>
+                                ) : filteredData.length > 0 ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-right">
+                                            <thead className="bg-gray-50 text-gray-600 font-medium border-b">
+                                                <tr>
+                                                    <th className="p-4">نام</th>
+                                                    <th className="p-4">نام خانوادگی</th>
+                                                    <th className="p-4">نام پدر</th>
+                                                    <th className="p-4 text-left">کد ملی</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {filteredData.map((item, idx) => (
+                                                    <tr key={idx} className="hover:bg-blue-50 transition-colors">
+                                                        <td className="p-4 font-bold text-gray-800">{item.name}</td>
+                                                        <td className="p-4 text-gray-700">{item.family}</td>
+                                                        <td className="p-4 text-gray-500 text-sm">{item.father}</td>
+                                                        <td className="p-4 text-left font-mono text-blue-600">{item.id}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-red-500">
+                                        نتیجه‌ای یافت نشد.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    
+                    <footer className="mt-8 text-gray-400 text-sm">
+                        قدرت گرفته از GitHub Pages | دیتابیس CSV
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
